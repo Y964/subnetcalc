@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Subnet Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Simple transition for a smoother appearance */
+        .result-card {
+            transition: all 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-gray-800 rounded-xl shadow-2xl p-6 md:p-8 border border-gray-700">
+        
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">IP Subnet Calculator</h1>
+            <p class="text-gray-400 mt-2">Enter an IP address and CIDR prefix to see the details.</p>
+        </div>
+
+        <!-- Input Form -->
+        <div class="flex flex-col sm:flex-row gap-3 mb-6">
+            <input type="text" id="ipInput" placeholder="e.g., 82.71.79.195/18" class="flex-grow bg-gray-700 text-white placeholder-gray-500 border border-gray-600 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+            <button id="calculateBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                Calculate
+            </button>
+        </div>
+
+        <!-- Error Message Area -->
+        <div id="error-message" class="hidden bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-6 text-center">
+        </div>
+
+        <!-- Results Display -->
+        <div id="results-container" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-base">
+                
+                <!-- Network Info -->
+                <div class="result-card bg-gray-700/50 p-4 rounded-lg border border-gray-600">
+                    <h3 class="font-semibold text-lg text-gray-300 mb-2">Network Info</h3>
+                    <p><span class="text-gray-400 w-32 inline-block">Subnet Mask:</span> <strong id="netmask" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">Wildcard Mask:</span> <strong id="wildcard" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">Total IPs:</span> <strong id="total-ips" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">Usable IPs:</span> <strong id="usable-ips" class="text-white"></strong></p>
+                </div>
+
+                <!-- Address Range -->
+                <div class="result-card bg-gray-700/50 p-4 rounded-lg border border-gray-600">
+                    <h3 class="font-semibold text-lg text-gray-300 mb-2">Address Range</h3>
+                    <p><span class="text-gray-400 w-32 inline-block">Network:</span> <strong id="network-addr" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">First Host:</span> <strong id="first-host" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">Last Host:</span> <strong id="last-host" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">Broadcast:</span> <strong id="broadcast-addr" class="text-white"></strong></p>
+                    <p><span class="text-gray-400 w-32 inline-block">Next Subnet:</span> <strong id="next-subnet" class="text-white"></strong></p>
+                </div>
+
+            </div>
+        </div>
+         <footer class="text-center mt-8 text-gray-500 text-sm">
+            <p>Built for a guy that's too lazy to calculate.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- DOM Element References ---
+        const ipInput = document.getElementById('ipInput');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const resultsContainer = document.getElementById('results-container');
+        const errorMessage = document.getElementById('error-message');
+
+        /**
+         * Converts a decimal number to a 32-bit binary string, padded with leading zeros.
+         * @param {number} dec - The decimal number to convert.
+         * @returns {string} The 32-bit binary string representation.
+         */
+        const dec2bin = (dec) => (dec >>> 0).toString(2).padStart(32, '0');
+
+        /**
+         * Converts a 32-bit binary string to a dotted-decimal IP address string.
+         * @param {string} bin - The 32-bit binary string.
+         * @returns {string} The IP address string.
+         */
+        const bin2ip = (bin) => {
+            return bin.match(/.{1,8}/g).map(v => parseInt(v, 2)).join('.');
+        };
+        
+        /**
+         * Converts an IP address string to its 32-bit binary representation.
+         * @param {string} ip - The IP address string.
+         * @returns {string} The 32-bit binary string.
+         */
+        const ip2bin = (ip) => {
+            return ip.split('.').map(v => parseInt(v, 10).toString(2).padStart(8, '0')).join('');
+        };
+
+        /**
+         * Main function to perform subnet calculations.
+         */
+        const calculateSubnet = () => {
+            const input = ipInput.value.trim();
+            const [ip, cidrStr] = input.split('/');
+
+            // --- Input Validation ---
+            if (!cidrStr || isNaN(parseInt(cidrStr, 10))) {
+                showError("Invalid format. Please use IP/CIDR (e.g., 192.168.1.1/24).");
+                return;
+            }
+            const cidr = parseInt(cidrStr, 10);
+            if (cidr < 0 || cidr > 32) {
+                showError("CIDR prefix must be between 0 and 32.");
+                return;
+            }
+            if (!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)) {
+                showError("Invalid IP address format.");
+                return;
+            }
+            if (ip.split('.').some(octet => parseInt(octet, 10) > 255)) {
+                showError("Invalid IP address. Octets cannot be greater than 255.");
+                return;
+            }
+
+            hideError();
+
+            // --- Calculations ---
+            try {
+                const ipBinary = ip2bin(ip);
+                
+                // Subnet Mask
+                const maskBinary = '1'.repeat(cidr).padEnd(32, '0');
+                const netmask = bin2ip(maskBinary);
+
+                // Wildcard Mask
+                const wildcardBinary = '0'.repeat(cidr).padEnd(32, '1');
+                const wildcard = bin2ip(wildcardBinary);
+
+                // Network Address
+                const networkBinary = (BigInt('0b' + ipBinary) & BigInt('0b' + maskBinary)).toString(2).padStart(32, '0');
+                const networkAddr = bin2ip(networkBinary);
+
+                // Broadcast Address
+                const broadcastBinary = (BigInt('0b' + networkBinary) | BigInt('0b' + wildcardBinary)).toString(2).padStart(32, '0');
+                const broadcastAddr = bin2ip(broadcastBinary);
+
+                // Total and Usable IPs
+                const hostBits = 32 - cidr;
+                const totalIPs = Math.pow(2, hostBits);
+                const usableIPs = Math.max(0, totalIPs - 2);
+
+                // Host Range
+                let firstHost = "N/A";
+                let lastHost = "N/A";
+                if (usableIPs > 0) {
+                    const firstHostBinary = (BigInt('0b' + networkBinary) + 1n).toString(2).padStart(32, '0');
+                    firstHost = bin2ip(firstHostBinary);
+                    const lastHostBinary = (BigInt('0b' + broadcastBinary) - 1n).toString(2).padStart(32, '0');
+                    lastHost = bin2ip(lastHostBinary);
+                }
+                
+                // Next Subnet
+                let nextSubnet = "N/A";
+                if (cidr < 32) {
+                    const nextSubnetBinary = (BigInt('0b' + broadcastBinary) + 1n).toString(2).padStart(32, '0');
+                    nextSubnet = bin2ip(nextSubnetBinary);
+                }
+
+
+                // --- Update UI ---
+                document.getElementById('netmask').textContent = netmask;
+                document.getElementById('wildcard').textContent = wildcard;
+                document.getElementById('total-ips').textContent = totalIPs.toLocaleString();
+                document.getElementById('usable-ips').textContent = usableIPs.toLocaleString();
+                document.getElementById('network-addr').textContent = networkAddr;
+                document.getElementById('first-host').textContent = firstHost;
+                document.getElementById('last-host').textContent = lastHost;
+                document.getElementById('broadcast-addr').textContent = broadcastAddr;
+                document.getElementById('next-subnet').textContent = nextSubnet;
+                
+                resultsContainer.classList.remove('hidden');
+
+            } catch (e) {
+                console.error(e);
+                showError("An unexpected error occurred during calculation.");
+            }
+        };
+
+        const showError = (message) => {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+        };
+
+        const hideError = () => {
+            errorMessage.classList.add('hidden');
+        };
+
+        // --- Event Listeners ---
+        calculateBtn.addEventListener('click', calculateSubnet);
+        ipInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                calculateSubnet();
+            }
+        });
+
+    </script>
+</body>
+</html>
